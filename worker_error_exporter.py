@@ -26,6 +26,17 @@ _log_handler = TimedRotatingFileHandler(
     LOG_FILE_PATH, when="midnight", interval=1, backupCount=6, encoding="utf-8"
 )
 _log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+
+
+def _rotated_log_namer(default_name: str) -> str:
+    """기본 로테이션 파일명(worker_error_exporter.log.2026-07-08)을
+    worker_error_exporter-2026-07-08.log 형태로 바꿔 날짜별 파일임을 알아보기 쉽게 한다."""
+    date_suffix = default_name.rsplit(".", 1)[-1]
+    base, ext = os.path.splitext(LOG_FILE_PATH)
+    return f"{base}-{date_suffix}{ext}"
+
+
+_log_handler.namer = _rotated_log_namer
 logger.addHandler(_log_handler)
 
 # --- 설정값 (Placeholder - 실제 값 확정되면 교체) ---
