@@ -1,0 +1,25 @@
+[Unit]
+Description=Kafka 워커노드 에러 카운트 Consumer + Prometheus Exporter
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# TODO: 실제 배치 계정으로 교체 (Prometheus/Grafana와 동일 계정이면 그대로 맞춰도 무방)
+User=EXEC_USER_PLACEHOLDER
+Group=EXEC_GROUP_PLACEHOLDER
+# TODO: 실제 배치 경로로 교체
+WorkingDirectory=/opt/worker-error-exporter
+ExecStart=/usr/bin/python3 /opt/worker-error-exporter/worker_error_exporter.py
+
+# /var/log/worker-error-exporter 디렉터리를 User/Group 소유로 자동 생성 (앱 코드의 LOG_FILE_PATH와 경로 일치 필요)
+# 로그는 앱 내 TimedRotatingFileHandler(자정 로테이션, backupCount=6)가 최근 1주일치만 보관
+LogsDirectory=worker-error-exporter
+
+# 상태를 in-memory 딕셔너리로만 관리하므로(CLAUDE.md 원칙) 재시작 시 데이터 손실은 설계상 허용됨.
+# group.id를 실행마다 신규 uuid로 생성하고 커밋을 하지 않으므로, 재시작해도 항상 latest부터 재구독됨.
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
