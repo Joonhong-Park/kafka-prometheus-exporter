@@ -72,14 +72,30 @@ journalctl -u worker-error-exporter -f
   초기화되지만, Consumer의 `group.id`가 매 실행마다 신규 UUID로 생성되고 커밋을 하지 않으므로 항상
   `auto.offset.reset=latest`부터 재구독된다(결측 허용, 기존 합의사항).
 
+## Prometheus 스크래핑 설정 (참고)
+
+`prometheus.yml`의 `scrape_configs`에 아래처럼 등록되어야 Prometheus가 이 Exporter를 스크래핑한다
+(이 등록 작업 자체는 이 프로젝트 범위 밖이며 별도로 관리됨).
+
+```yaml
+scrape_configs:
+  - job_name: "impalahdfserror-exporter"
+    static_configs:
+      - targets: ["localhost:9200"]
+```
+
 ## Grafana 연동 (참고)
 
-- Exporter는 `hostname` 라벨만 노출하며 cluster 구분 로직을 포함하지 않는다.
+- Exporter는 `hostname` 라벨만 노출하며 cluster 구분 로직을 포함하지 않는다. 스크래핑 시 Prometheus가
+  자동으로 `job="impalahdfserror-exporter"`, `instance="localhost:9200"` 라벨을 붙여 최종적으로
+  `{__name__="error_count", hostname="...", instance="localhost:9200", job="impalahdfserror-exporter"}`
+  형태로 저장된다.
 - cluster2/3/4 필터링/집계는 Grafana PromQL에서 정규식으로 처리한다: `hostname=~"^cluster2.*"` 등.
 - 미수신 노드(stale) 판단은 `node_last_seen_timestamp`와 현재 시각의 차이를 4200초(70분, 발행 주기
   1시간 + 10분 버퍼) 기준으로 Grafana 쿼리에서 계산한다.
-- 메트릭 이름(`error_count`, `node_last_seen_timestamp`)은 과거 데이터를 채워 넣는 별도 백필
-  스크립트(`backfill_to_prometheus.py`)와 동일하게 맞춰져 있어, Grafana에서 같은 시리즈로 조회된다.
+- 메트릭 이름(`error_count`, `node_last_seen_timestamp`)과 `job`/`instance` 라벨은 과거 데이터를 채워
+  넣는 별도 백필 스크립트(`backfill_to_prometheus.py`)와 동일하게 맞춰져 있어야 완전히 같은 시리즈로
+  조회된다 — 라벨셋이 하나라도 다르면 Prometheus는 별개의 시리즈로 취급한다.
 
 ## 이 프로젝트 범위 밖
 

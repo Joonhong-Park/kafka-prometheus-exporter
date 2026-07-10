@@ -27,6 +27,12 @@ RETRY_BACKOFF_SECONDS = 2.0
 METRIC_NAME_ERROR_COUNT = "error_count"
 METRIC_NAME_LAST_SEEN = "node_last_seen_timestamp"
 
+# Prometheus가 상시 Exporter를 스크래핑할 때 자동으로 붙이는 job/instance 라벨과 동일한 값을
+# 백필 시에도 넣어야 한다. 라벨셋 전체가 시리즈의 정체성이라, 하나라도 다르면(예: instance 라벨
+# 누락) Grafana에서 실시간 데이터와 이어지지 않고 완전히 별개의 시리즈로 취급된다.
+JOB_NAME = "impalahdfserror-exporter"
+INSTANCE_LABEL = "localhost:9200"  # prometheus.yml scrape_configs의 targets 값과 동일해야 함
+
 
 def load_records() -> pd.DataFrame:
     """Parquet 파일을 읽어 컬럼을 위치 인덱스(0, 1, 2) 기준으로 hostname/timestamp/count에 매핑한다.
@@ -145,15 +151,16 @@ def build_timeseries_list(df: pd.DataFrame) -> list[bytes]:
         # 과거 백필 시점에는 이벤트 시각(epoch seconds)을 값으로 그대로 사용한다.
         last_seen_samples = list(zip(epoch_seconds.tolist(), timestamps_ms))
 
+        common_labels = [("hostname", hostname), ("instance", INSTANCE_LABEL), ("job", JOB_NAME)]
         timeseries_list.append(
             _encode_timeseries(
-                [("__name__", METRIC_NAME_ERROR_COUNT), ("hostname", hostname)],
+                [("__name__", METRIC_NAME_ERROR_COUNT)] + common_labels,
                 error_count_samples,
             )
         )
         timeseries_list.append(
             _encode_timeseries(
-                [("__name__", METRIC_NAME_LAST_SEEN), ("hostname", hostname)],
+                [("__name__", METRIC_NAME_LAST_SEEN)] + common_labels,
                 last_seen_samples,
             )
         )
