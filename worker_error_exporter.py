@@ -40,13 +40,14 @@ _log_handler.namer = _rotated_log_namer
 logger.addHandler(_log_handler)
 
 # --- 설정값 (Placeholder - 실제 값 확정되면 교체) ---
-# 브로커 10대(각 9092 포트)가 클러스터를 구성 - bootstrap.servers는 콤마로 구분된 host:port 목록으로 지정
+# 브로커 10대(각 9092 포트)가 클러스터를 구성 - 목록에 host:port 항목을 추가/삭제해서 교체
 # (전부 나열하지 않아도 초기 접속 후 나머지는 자동 discovery 되지만, 일부 브로커 다운 시 초기 접속 실패를 막기 위해 여러 대를 나열 권장)
-KAFKA_BOOTSTRAP_SERVERS = (
-    "KAFKA_BROKER_1_PLACEHOLDER:9092,"
-    "KAFKA_BROKER_2_PLACEHOLDER:9092,"
-    "KAFKA_BROKER_3_PLACEHOLDER:9092"
-)  # TODO: 실제 브로커 주소로 교체 (10대 중 일부만 나열해도 무방)
+KAFKA_BROKER_LIST = [
+    "KAFKA_BROKER_1_PLACEHOLDER:9092",
+    "KAFKA_BROKER_2_PLACEHOLDER:9092",
+    "KAFKA_BROKER_3_PLACEHOLDER:9092",
+]  # TODO: 실제 브로커 주소로 교체 (10대 중 일부만 나열해도 무방)
+KAFKA_BOOTSTRAP_SERVERS = ",".join(KAFKA_BROKER_LIST)  # confluent-kafka는 콤마로 구분된 문자열을 요구
 KAFKA_TOPIC = "topic-name-1"
 EXPORTER_PORT = 9200  # 확정 (동일 서버의 Grafana 3000/node_exporter 3100/Prometheus 9090과 충돌 없음 확인됨)
 
@@ -103,7 +104,7 @@ def run_consumer() -> None:
             try:
                 payload = json.loads(raw_value.decode("utf-8"))
                 hostname: str = payload["hostname"]
-                count: int = payload["count"]
+                count: int = payload["cnt"]
                 timestamp_str: str = payload["@timestamp"]
                 # "2026-07-08 15:02:02+09:00" (KST) -> epoch seconds
                 last_seen_epoch: float = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S%z").timestamp()
