@@ -58,8 +58,12 @@ def load_records() -> pd.DataFrame:
     # NaT/NaN으로 만들고 전체 스크립트는 중단되지 않게 한다.
     df["event_time"] = pd.to_datetime(df["timestamp_raw"], errors="coerce")
     # Parquet의 timestamp 컬럼이 문자열이 아니라 이미 datetime64로 저장되어 있으면 tz 정보 없이
-    # tz-naive로 남는다. 원본이 KST(+09:00)라는 전제(claude-backfill.md)로 tz-naive면 KST로
-    # 로컬라이즈한다 (그대로 두면 이후 tz-aware 값과의 연산에서 예외가 발생함).
+    # tz-naive로 남는다 (실측: dtype datetime64[ns], 값 예시 2026-06-01 03:02:01, 오프셋 없음).
+    # TODO: 이 값이 실제로 KST인지 데이터 소스(Impala/HDFS 파이프라인) 쪽에서 확인되지 않음 -
+    # 현재는 claude-backfill.md의 "@timestamp 형식: KST" 설명만 근거로 가정. 틀리면 백필되는
+    # 모든 시각이 9시간씩 밀리므로, 확인 전까지는 참고용으로만 신뢰할 것.
+    if df["event_time"].dt.tz is None:
+        df["event_time"] = df["event_time"].dt.tz_localize(KST)
     if df["event_time"].dt.tz is None:
         df["event_time"] = df["event_time"].dt.tz_localize(KST)
     df["count"] = pd.to_numeric(df["count_raw"], errors="coerce")
@@ -205,9 +209,14 @@ def send_batches(timeseries_list: list[bytes]) -> None:
                 logger.info("배치 %d/%d 전송 성공 (series %d개)", batch_index + 1, total_batches, len(batch))
                 break
             except requests.RequestException as e:
+                # Prometheus는 거부 사유(out-of-order, out-of-bounds 등)를 응답 본문에 텍스트로 담아
+                # 주므로, 그냥 raise_for_status()의 요약 메시지만으로는 원인을 알 수 없다.
+                error_detail = ""
+                if getattr(e, "response", None) is not None:
+                    error_detail = f" - 응답 본문: {e.response.text[:500]}"
                 logger.warning(
-                    "배치 %d/%d 전송 실패 (시도 %d/%d): %s",
-                    batch_index + 1, total_batches, attempt, MAX_RETRIES, e,
+                    "배치 %d/%d 전송 실패 (시도 %d/%d): %s%s",
+                    batch_index + 1, total_batches, attempt, MAX_RETRIES, e, error_detail,
                 )
                 if attempt < MAX_RETRIES:
                     time.sleep(RETRY_BACKOFF_SECONDS * attempt)
