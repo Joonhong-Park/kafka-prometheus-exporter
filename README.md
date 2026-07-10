@@ -45,7 +45,7 @@ curl http://localhost:9200/metrics | grep worker_
 tail -f /var/log/worker-error-exporter/worker_error_exporter.log
 ```
 
-- 정상 수신 시 `worker_error_count{hostname="..."}`, `worker_last_seen_timestamp{hostname="..."}` 두 Gauge가 갱신된다.
+- 정상 수신 시 `error_count{hostname="..."}`, `node_last_seen_timestamp{hostname="..."}` 두 Gauge가 갱신된다.
 - 로그는 매일 자정 로테이션되며 최근 1주일치만 보관된다(`backupCount=6`).
 
 ## systemd 서비스로 등록 (상시 데몬 운영)
@@ -76,8 +76,10 @@ journalctl -u worker-error-exporter -f
 
 - Exporter는 `hostname` 라벨만 노출하며 cluster 구분 로직을 포함하지 않는다.
 - cluster2/3/4 필터링/집계는 Grafana PromQL에서 정규식으로 처리한다: `hostname=~"^cluster2.*"` 등.
-- 미수신 노드(stale) 판단은 `worker_last_seen_timestamp`와 현재 시각의 차이를 4200초(70분, 발행 주기
+- 미수신 노드(stale) 판단은 `node_last_seen_timestamp`와 현재 시각의 차이를 4200초(70분, 발행 주기
   1시간 + 10분 버퍼) 기준으로 Grafana 쿼리에서 계산한다.
+- 메트릭 이름(`error_count`, `node_last_seen_timestamp`)은 과거 데이터를 채워 넣는 별도 백필
+  스크립트(`backfill_to_prometheus.py`)와 동일하게 맞춰져 있어, Grafana에서 같은 시리즈로 조회된다.
 
 ## 이 프로젝트 범위 밖
 

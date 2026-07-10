@@ -53,11 +53,13 @@ EXPORTER_PORT = 9200  # 확정 (동일 서버의 Grafana 3000/node_exporter 3100
 
 # --- Prometheus Gauge 정의 ---
 # hostname 라벨만 노출하고 cluster 구분 로직은 포함하지 않는다 (클러스터 필터링은 Grafana PromQL 책임)
-worker_error_count = Gauge(
-    "worker_error_count", "워커노드별 최신 에러 카운트", ["hostname"]
+# 메트릭 이름은 backfill_to_prometheus.py(과거 데이터 백필 스크립트)와 동일하게 맞춰야
+# Grafana에서 같은 시리즈로 조회된다.
+error_count = Gauge(
+    "error_count", "워커노드별 최신 에러 카운트", ["hostname"]
 )
-worker_last_seen_timestamp = Gauge(
-    "worker_last_seen_timestamp", "워커노드별 마지막 메시지 수신 시각(epoch seconds)", ["hostname"]
+node_last_seen_timestamp = Gauge(
+    "node_last_seen_timestamp", "워커노드별 마지막 메시지 수신 시각(epoch seconds)", ["hostname"]
 )
 
 
@@ -114,8 +116,8 @@ def run_consumer() -> None:
                 continue
 
             # 누적이 아닌 최신값으로 갱신
-            worker_error_count.labels(hostname=hostname).set(count)
-            worker_last_seen_timestamp.labels(hostname=hostname).set(last_seen_epoch)
+            error_count.labels(hostname=hostname).set(count)
+            node_last_seen_timestamp.labels(hostname=hostname).set(last_seen_epoch)
             logger.info("메시지 반영: hostname=%s, count=%s, last_seen=%s", hostname, count, last_seen_epoch)
 
     except KeyboardInterrupt:
