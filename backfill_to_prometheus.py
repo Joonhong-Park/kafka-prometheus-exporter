@@ -8,10 +8,13 @@ claude-backfill.md의 2단계 개발 절차에 따라 단계별로 코드를 추
 import logging
 import struct
 import time
+from datetime import timedelta, timezone
 
 import pandas as pd
 import requests
 import snappy
+
+KST = timezone(timedelta(hours=9))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -54,6 +57,11 @@ def load_records() -> pd.DataFrame:
     # 벡터화 연산으로 파싱 (iterrows() 사용 금지). errors="coerce"로 개별 행 파싱 실패만
     # NaT/NaN으로 만들고 전체 스크립트는 중단되지 않게 한다.
     df["event_time"] = pd.to_datetime(df["timestamp_raw"], errors="coerce")
+    # Parquet의 timestamp 컬럼이 문자열이 아니라 이미 datetime64로 저장되어 있으면 tz 정보 없이
+    # tz-naive로 남는다. 원본이 KST(+09:00)라는 전제(claude-backfill.md)로 tz-naive면 KST로
+    # 로컬라이즈한다 (그대로 두면 이후 tz-aware 값과의 연산에서 예외가 발생함).
+    if df["event_time"].dt.tz is None:
+        df["event_time"] = df["event_time"].dt.tz_localize(KST)
     df["count"] = pd.to_numeric(df["count_raw"], errors="coerce")
 
     # hostname 누락 또는 timestamp/count 파싱 실패 행은 백필 대상에서 제외
