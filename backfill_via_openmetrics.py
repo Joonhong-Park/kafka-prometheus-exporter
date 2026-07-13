@@ -16,14 +16,12 @@ Prometheus 2.26.0은 out-of-order 샘플 수신 기능(2.39부터 추가)이 없
 """
 
 import logging
-from datetime import timedelta, timezone
+from datetime import timezone
 
 import pandas as pd
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
-
-KST = timezone(timedelta(hours=9))
 
 # --- 설정값 (Placeholder - 실제 값 확정되면 교체) ---
 PARQUET_FILE_PATH = "PARQUET_FILE_PATH_PLACEHOLDER.parquet"  # TODO: 실제 로컬 경로로 교체
@@ -34,6 +32,12 @@ METRIC_NAME_ERROR_COUNT = "error_count"
 METRIC_NAME_LAST_SEEN = "node_last_seen_timestamp"
 JOB_NAME = "impalahdfserror-exporter"
 INSTANCE_LABEL = "localhost:9200"  # prometheus.yml scrape_configs의 targets 값과 동일해야 함
+
+# 라이브 Exporter가 실제로 스크래핑을 시작한 시각(KST) - 이 시각 이후 데이터는 백필하지 않는다.
+# `systemctl show worker-error-exporter -p ActiveEnterTimestamp`로 확인한 값으로 교체할 것.
+# 백필 시간이 tz-naive였다가 UTC로 잘못 해석된 문제를 +9시간 보정하면서 백필 종료 시점이
+# 뒤로 밀려, 이 컷오프 없이는 라이브로 이미 스크래핑된 구간과 겹칠 수 있다.
+LIVE_DATA_START_KST = "2026-07-08T00:00:00+09:00"  # TODO: 실제 ActiveEnterTimestamp로 교체
 
 
 def load_records() -> pd.DataFrame:
@@ -55,17 +59,27 @@ def load_records() -> pd.DataFrame:
 
     df["event_time"] = pd.to_datetime(df["timestamp_raw"], errors="coerce")
     # Parquet의 timestamp 컬럼이 이미 datetime64로 저장되어 있으면 tz 정보 없이 tz-naive로
-    # 남는다 (실측: dtype datetime64[ns], 값 예시 2026-06-01 03:02:01). 원본이 KST라는 전제로
-    # 로컬라이즈한다.
+    # 남는다 (실측: dtype datetime64[ns], 값 예시 2026-06-01 03:02:01). 이 naive 값 자체가
+    # 이미 UTC 벽시계 시각임이 확인됨 (KST로 잘못 로컬라이즈하면 실제보다 9시간 이른 epoch가
+    # 나와 백필 데이터가 9시간 과거로 밀려 저장되는 문제가 있었음).
     if df["event_time"].dt.tz is None:
-        df["event_time"] = df["event_time"].dt.tz_localize(KST)
+        df["event_time"] = df["event_time"].dt.tz_localize(timezone.utc)
     df["count"] = pd.to_numeric(df["count_raw"], errors="coerce")
 
     valid_mask = df["hostname"].notna() & df["event_time"].notna() & df["count"].notna()
     valid_df = df.loc[valid_mask, ["hostname", "event_time", "count"]].reset_index(drop=True)
 
-    skipped_rows = total_rows - len(valid_df)
-    logger.info("전체 %d건 중 %d건 파싱 성공, %d건 스킵", total_rows, len(valid_df), skipped_rows)
+    # 라이브 Exporter가 이미 스크래핑 중인 구간과 겹치지 않도록, 그 시작 시각 이후 데이터는 제외
+    live_start = pd.Timestamp(LIVE_DATA_START_KST)
+    before_cutoff_count = len(valid_df)
+    valid_df = valid_df.loc[valid_df["event_time"] < live_start].reset_index(drop=True)
+    excluded_by_cutoff = before_cutoff_count - len(valid_df)
+
+    skipped_rows = total_rows - len(valid_df) - excluded_by_cutoff
+    logger.info(
+        "전체 %d건 중 %d건 파싱 성공, %d건 스킵, 라이브 구간(>= %s) 겹침으로 %d건 제외",
+        total_rows, len(valid_df), skipped_rows, LIVE_DATA_START_KST, excluded_by_cutoff,
+    )
     logger.info("샘플 레코드:\n%s", valid_df.head(5).to_string(index=False))
 
     return valid_df

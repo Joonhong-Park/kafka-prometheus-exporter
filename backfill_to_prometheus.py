@@ -8,13 +8,11 @@ claude-backfill.md의 2단계 개발 절차에 따라 단계별로 코드를 추
 import logging
 import struct
 import time
-from datetime import timedelta, timezone
+from datetime import timezone
 
 import pandas as pd
 import requests
 import snappy
-
-KST = timezone(timedelta(hours=9))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -59,13 +57,10 @@ def load_records() -> pd.DataFrame:
     df["event_time"] = pd.to_datetime(df["timestamp_raw"], errors="coerce")
     # Parquet의 timestamp 컬럼이 문자열이 아니라 이미 datetime64로 저장되어 있으면 tz 정보 없이
     # tz-naive로 남는다 (실측: dtype datetime64[ns], 값 예시 2026-06-01 03:02:01, 오프셋 없음).
-    # TODO: 이 값이 실제로 KST인지 데이터 소스(Impala/HDFS 파이프라인) 쪽에서 확인되지 않음 -
-    # 현재는 claude-backfill.md의 "@timestamp 형식: KST" 설명만 근거로 가정. 틀리면 백필되는
-    # 모든 시각이 9시간씩 밀리므로, 확인 전까지는 참고용으로만 신뢰할 것.
+    # 이 naive 값 자체가 이미 UTC 벽시계 시각임이 확인됨 (KST로 로컬라이즈했을 때 백필 데이터가
+    # 실제보다 9시간 과거로 저장되는 문제가 있었음).
     if df["event_time"].dt.tz is None:
-        df["event_time"] = df["event_time"].dt.tz_localize(KST)
-    if df["event_time"].dt.tz is None:
-        df["event_time"] = df["event_time"].dt.tz_localize(KST)
+        df["event_time"] = df["event_time"].dt.tz_localize(timezone.utc)
     df["count"] = pd.to_numeric(df["count_raw"], errors="coerce")
 
     # hostname 누락 또는 timestamp/count 파싱 실패 행은 백필 대상에서 제외
