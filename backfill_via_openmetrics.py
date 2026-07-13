@@ -34,10 +34,10 @@ JOB_NAME = "impalahdfserror-exporter"
 INSTANCE_LABEL = "localhost:9200"  # prometheus.yml scrape_configs의 targets 값과 동일해야 함
 
 # 라이브 Exporter가 실제로 스크래핑을 시작한 시각(KST) - 이 시각 이후 데이터는 백필하지 않는다.
-# `systemctl show worker-error-exporter -p ActiveEnterTimestamp`로 확인한 값으로 교체할 것.
-# 백필 시간이 tz-naive였다가 UTC로 잘못 해석된 문제를 +9시간 보정하면서 백필 종료 시점이
-# 뒤로 밀려, 이 컷오프 없이는 라이브로 이미 스크래핑된 구간과 겹칠 수 있다.
-LIVE_DATA_START_KST = "2026-07-08T00:00:00+09:00"  # TODO: 실제 ActiveEnterTimestamp로 교체
+# 주의: systemctl show worker-error-exporter -p ActiveEnterTimestamp는 "가장 최근 재시작 시각"일
+# 뿐이라 이 용도에 맞지 않음 (코드 수정 때마다 재시작하면서 값이 계속 갱신됨). 실제로는 Grafana
+# 차트에서 직접 확인한 "라이브 시계열이 최초로 기록되기 시작한 시각"을 써야 한다.
+LIVE_DATA_START_KST = "2026-07-08T16:05:00+09:00"  # Grafana 차트에서 확인한 라이브 데이터 최초 기록 시각
 
 
 def load_records() -> pd.DataFrame:
